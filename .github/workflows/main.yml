@@ -37,7 +37,7 @@ jobs:
     # Create configuration files from GitHub secrets
     - name: Create environment configuration
       run: |
-        cat > local-agent/.env << 'EOF'
+        cat > .env << 'EOF'
         # Reacharr Local Agent Configuration
         # Auto-generated from GitHub secrets
         
