@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  # Local Agent Backend Service
+  agent:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: reacharr-local-agent
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - PORT=3000
+      - CONFIG_PATH=/app/data/agent-config.json
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3001}
+      # Remote MQTT Configuration
+      - REMOTE_SERVER_URL=${REMOTE_SERVER_URL:-https://reacharr.com}
+      - MQTT_BROKER_URL=${MQTT_BROKER_URL:-mqtt://reacharr.com:1883}
+      - MQTT_PASSWORD=${MQTT_PASSWORD:-reacharr_agent_password}
+    volumes:
+      - ./data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    user: "1001:1001"
+    ports:
+      - "3000:3000"
+    networks:
+      - agent-network
+    restart: unless-stopped
+
+  # Configuration Web UI
+  config-ui:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: reacharr-config-ui
+    environment:
+      - REACT_APP_AGENT_API_URL=http://localhost:3000
+      - REACT_APP_FIREBASE_CONFIG_PATH=/app/firebase-config.json
+    volumes:
+      - ./frontend/firebase-config.json:/app/firebase-config.json:ro
+    ports:
+      - "3001:3000"
+    networks:
+      - agent-network
+    restart: unless-stopped
+    depends_on:
+      - agent
+
+networks:
+  agent-network:
+    driver: bridge
+
+volumes:
+  agent_data: 

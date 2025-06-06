@@ -1,0 +1,2 @@
+# This file keeps the local agent data directory in version control
+# Agent configuration and logs will be stored here at runtime 

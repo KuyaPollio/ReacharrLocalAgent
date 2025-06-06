@@ -1,0 +1,15 @@
+{
+  "short_name": "Reacharr Agent",
+  "name": "Reacharr Local Agent",
+  "icons": [
+    {
+      "src": "reacharr.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#1976d2",
+  "background_color": "#000000"
+} 

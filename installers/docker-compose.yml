@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  reacharr-agent:
+    image: reacharr/local-agent:latest
+    container_name: reacharr-agent
+    restart: unless-stopped
+    environment:
+      # Copy from .env file or set directly here
+      - NODE_ENV=production
+    env_file:
+      - .env
+    volumes:
+      # Configuration and data persistence
+      - ./data:/app/data
+      - ./config:/app/config
+      - ./firebase-service-account.json:/app/firebase-service-account.json:ro
+      # Optional: Mount local media directories for file access
+      # - /path/to/your/media:/media:ro
+    networks:
+      - reacharr-network
+    # If your Sonarr/Radarr are in containers, connect to their network
+    # external_links:
+    #   - sonarr:sonarr
+    #   - radarr:radarr
+
+  # Optional: Include Sonarr/Radarr if not already running
+  # sonarr:
+  #   image: lscr.io/linuxserver/sonarr:latest
+  #   container_name: sonarr
+  #   environment:
+  #     - PUID=1000
+  #     - PGID=1000
+  #     - TZ=America/New_York
+  #   volumes:
+  #     - ./sonarr-config:/config
+  #     - /path/to/tv:/tv
+  #     - /path/to/downloads:/downloads
+  #   ports:
+  #     - 8989:8989
+  #   restart: unless-stopped
+  #   networks:
+  #     - reacharr-network
+
+  # radarr:
+  #   image: lscr.io/linuxserver/radarr:latest
+  #   container_name: radarr
+  #   environment:
+  #     - PUID=1000
+  #     - PGID=1000
+  #     - TZ=America/New_York
+  #   volumes:
+  #     - ./radarr-config:/config
+  #     - /path/to/movies:/movies
+  #     - /path/to/downloads:/downloads
+  #   ports:
+  #     - 7878:7878
+  #   restart: unless-stopped
+  #   networks:
+  #     - reacharr-network
+
+networks:
+  reacharr-network:
+    driver: bridge
