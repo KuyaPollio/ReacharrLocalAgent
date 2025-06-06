@@ -32,7 +32,7 @@ jobs:
       with:
         node-version: '18'
         cache: 'npm'
-        cache-dependency-path: local-agent/backend/package-lock.json
+        cache-dependency-path: backend/package-lock.json
 
     # Create configuration files from GitHub secrets
     - name: Create environment configuration
@@ -90,7 +90,7 @@ jobs:
 
     - name: Create Firebase service account file
       run: |
-        cat > local-agent/firebase-service-account.json << 'EOF'
+        cat > firebase-service-account.json << 'EOF'
         {
           "type": "service_account",
           "project_id": "${{ secrets.FIREBASE_PROJECT_ID || 'managarr-7c808' }}",
@@ -108,7 +108,7 @@ jobs:
 
     - name: Create frontend Firebase config
       run: |
-        cat > local-agent/frontend/firebase-config.json << 'EOF'
+        cat > frontend/firebase-config.json << 'EOF'
         {
           "apiKey": "${{ secrets.FIREBASE_WEB_API_KEY }}",
           "authDomain": "${{ secrets.FIREBASE_AUTH_DOMAIN || 'managarr-7c808.firebaseapp.com' }}",
@@ -155,8 +155,8 @@ jobs:
     - name: Build and push backend image
       uses: docker/build-push-action@v5
       with:
-        context: ./local-agent/backend
-        file: ./local-agent/backend/Dockerfile
+        context: ./backend
+        file: ./backend/Dockerfile
         push: true
         tags: ${{ steps.meta-backend.outputs.tags }}
         labels: ${{ steps.meta-backend.outputs.labels }}
@@ -164,8 +164,8 @@ jobs:
     - name: Build and push frontend image
       uses: docker/build-push-action@v5
       with:
-        context: ./local-agent/frontend
-        file: ./local-agent/frontend/Dockerfile
+        context: ./frontend
+        file: ./frontend/Dockerfile
         push: true
         tags: ${{ steps.meta-frontend.outputs.tags }}
         labels: ${{ steps.meta-frontend.outputs.labels }}
