@@ -22,7 +22,7 @@ services:
 
   # Configuration Web UI
   reacharr-config-ui:
-    image: ghcr.io/kuyapollio//reacharr-configui:latest
+    image: ghcr.io/kuyapollio/reacharr-configui:latest
     container_name: reacharr-config-ui
     environment:
       - REACT_APP_AGENT_API_URL=http://localhost:3000
