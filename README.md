@@ -5,7 +5,10 @@
 </div>
 Connect your local Radarr and Sonarr instances to the Reacharr cloud platform for remote access, sharing, and automated content management.
 
+
 #⚠️ If you want to connect using your google account you need to access your reacharr config Ui from a localhost or casaos.local url ⚠️
+
+
 
 > 🎉 **NEW**: Zero-configuration Docker deployment! No environment variables or Firebase setup required - just run and configure through the web UI.
 
