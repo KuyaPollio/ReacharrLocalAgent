@@ -40,4 +40,4 @@ networks:
     driver: bridge
 
 volumes:
-  reacharr_data: 
+  reacharr_data:
