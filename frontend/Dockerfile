@@ -7,6 +7,9 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 
+# Copy Firebase configuration (created during CI/CD)
+COPY firebase-config.json ./src/firebase-config.json
+
 # Copy source code
 COPY . .
 
@@ -18,6 +21,9 @@ FROM nginx:alpine
 
 # Copy built files to nginx
 COPY --from=builder /app/build /usr/share/nginx/html
+
+# Copy Firebase config for runtime access
+COPY --from=builder /app/src/firebase-config.json /usr/share/nginx/html/firebase-config.json
 
 # Copy nginx configuration
 COPY nginx.conf /etc/nginx/conf.d/default.conf

@@ -1,54 +1,43 @@
 version: '3.8'
 
 services:
-  # Local Agent Backend Service
-  agent:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: reacharr-local-agent
-    environment:
-      - NODE_ENV=${NODE_ENV:-production}
-      - PORT=3000
-      - CONFIG_PATH=/app/data/agent-config.json
-      - LOG_LEVEL=${LOG_LEVEL:-info}
-      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3001}
-      # Remote MQTT Configuration
-      - REMOTE_SERVER_URL=${REMOTE_SERVER_URL:-https://reacharr.com}
-      - MQTT_BROKER_URL=${MQTT_BROKER_URL:-mqtt://reacharr.com:1883}
-      - MQTT_PASSWORD=${MQTT_PASSWORD:-reacharr_agent_password}
+  # Reacharr Local Agent Backend
+  reacharr-agent:
+    image: ghcr.io/reacharrpascal/reacharr-localagent:latest
+    container_name: reacharr-agent
     volumes:
       - ./data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    user: "1001:1001"
     ports:
       - "3000:3000"
     networks:
-      - agent-network
+      - reacharr-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http = require('http'); http.get('http://localhost:3000/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   # Configuration Web UI
-  config-ui:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+  reacharr-config-ui:
+    image: ghcr.io/reacharrpascal/reacharr-configui:latest
     container_name: reacharr-config-ui
     environment:
       - REACT_APP_AGENT_API_URL=http://localhost:3000
-      - REACT_APP_FIREBASE_CONFIG_PATH=/app/firebase-config.json
-    volumes:
-      - ./frontend/firebase-config.json:/app/firebase-config.json:ro
     ports:
       - "3001:3000"
     networks:
-      - agent-network
+      - reacharr-network
     restart: unless-stopped
     depends_on:
-      - agent
+      reacharr-agent:
+        condition: service_healthy
 
 networks:
-  agent-network:
+  reacharr-network:
     driver: bridge
 
 volumes:
-  agent_data: 
+  reacharr_data: 

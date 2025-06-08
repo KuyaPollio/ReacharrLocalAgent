@@ -5,6 +5,8 @@
 </div>
 Connect your local Radarr and Sonarr instances to the Reacharr cloud platform for remote access, sharing, and automated content management.
 
+> 🎉 **NEW**: Zero-configuration Docker deployment! No environment variables or Firebase setup required - just run and configure through the web UI.
+
 ## 🚀 What is Reacharr Local Agent?
 
 The Reacharr Local Agent is a lightweight service that securely connects your local media servers (Radarr, Sonarr) to the Reacharr cloud platform. It enables:
@@ -19,102 +21,144 @@ The Reacharr Local Agent is a lightweight service that securely connects your lo
 Before installing the agent, ensure you have:
 
 1. **Radarr and/or Sonarr** running locally
-2. **Firebase service account** credentials ([Get them here](https://docs.reacharr.com/firebase-setup))
+2. **Docker and Docker Compose** installed (for the recommended method)
 3. **Reacharr account** ([Sign up here](https://reacharr.com))
 4. **Network connectivity** to reacharr.com (port 1883 for MQTT)
 
-## 🐳 Installation Method 1: Docker (Recommended)
+> ℹ️ **Note**: Firebase credentials are no longer required! They're now built into the Docker images.
 
-Docker is the easiest and most reliable way to run the Reacharr Local Agent.
+## 🐳 Installation Method 1: Docker (Recommended) - Zero Configuration!
 
-### Quick Start
+Docker is the easiest way to run the Reacharr Local Agent. **No environment variables or Firebase setup required!**
 
-1. **Download the Docker setup:**
+### ⚡ Super Quick Start (2 minutes)
+
+1. **Download the ready-to-run Docker setup:**
    ```bash
-   curl -L https://github.com/reacharr/local-agent/releases/latest/download/docker-setup.zip -o docker-setup.zip
-   unzip docker-setup.zip
-   cd reacharr-agent-docker
+   curl -L https://github.com/ReacharrPascal/ReacharrLocalAgent/releases/latest/download/docker-compose.yml -o docker-compose.yml
    ```
 
-2. **Configure environment variables:**
-   ```bash
-   cp .env.example .env
-   nano .env  # Edit with your settings
-   ```
-
-3. **Add Firebase credentials:**
-   ```bash
-   # Download firebase-service-account.json from Firebase Console
-   # Place it in the same directory as docker-compose.yml
-   ```
-
-4. **Start the agent:**
+2. **Start the agent:**
    ```bash
    docker-compose up -d
    ```
 
-5. **Access the configuration UI:**
-   - Open http://localhost:3001 in your browser
-   - Configure your Radarr/Sonarr connections
-   - Complete the agent registration
+3. **Configure through web UI:**
+   - 🌐 Open **http://localhost:3001** in your browser
+   - 🔧 Add your Radarr/Sonarr servers (URLs and API keys)
+   - ✅ Complete the setup wizard
 
-### Docker Configuration
+4. **You're done!** The agent automatically connects to Reacharr.com
 
-#### Environment Variables (.env)
-```env
-# Remote Server Configuration
-REMOTE_SERVER_URL=https://reacharr.com
-MQTT_BROKER_URL=mqtt://reacharr.com:1883
-MQTT_PASSWORD=reacharr_agent_password
+### 📋 Complete Docker Compose File
 
-# Application Settings
-NODE_ENV=production
-LOG_LEVEL=info
-CORS_ORIGIN=http://localhost:3001
+If you prefer to copy-paste, here's the complete `docker-compose.yml`:
 
-# Local Services Configuration
-# If Radarr/Sonarr are in Docker containers, use container names:
-RADARR_URL=http://radarr:7878
-SONARR_URL=http://sonarr:8989
+```yaml
+version: '3.8'
 
-# If Radarr/Sonarr are on the host system:
-# RADARR_URL=http://host.docker.internal:7878
-# SONARR_URL=http://host.docker.internal:8989
+services:
+  # Reacharr Local Agent Backend
+  reacharr-agent:
+    image: ghcr.io/reacharrpascal/reacharr-localagent:latest
+    container_name: reacharr-agent
+    volumes:
+      - ./data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "3000:3000"
+    networks:
+      - reacharr-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http = require('http'); http.get('http://localhost:3000/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Configuration Web UI
+  reacharr-config-ui:
+    image: ghcr.io/reacharrpascal/reacharr-configui:latest
+    container_name: reacharr-config-ui
+    environment:
+      - REACT_APP_AGENT_API_URL=http://localhost:3000
+    ports:
+      - "3001:3000"
+    networks:
+      - reacharr-network
+    restart: unless-stopped
+    depends_on:
+      reacharr-agent:
+        condition: service_healthy
+
+networks:
+  reacharr-network:
+    driver: bridge
+
+volumes:
+  reacharr_data:
 ```
 
-#### Docker Networking
+### 🔧 Configuration Examples
 
-**If your Radarr/Sonarr are in containers:**
-- Use container names in URLs (e.g., `http://radarr:7878`)
-- Add them to the same Docker network
-- Uncomment the services in the provided `docker-compose.yml`
+#### Radarr/Sonarr on the same machine:
+- **Radarr URL**: `http://host.docker.internal:7878`
+- **Sonarr URL**: `http://host.docker.internal:8989`
 
-**If running on the host:**
-- Use `host.docker.internal` (Docker Desktop) or your host IP
-- Example: `http://host.docker.internal:7878`
+#### Radarr/Sonarr in Docker containers:
+- **Radarr URL**: `http://radarr:7878` (if on same network)
+- **Sonarr URL**: `http://sonarr:8989`
 
-### Docker Management Commands
+#### Remote Radarr/Sonarr:
+- **Radarr URL**: `http://192.168.1.100:7878` (use actual IP)
+- **Sonarr URL**: `http://192.168.1.100:8989`
+
+### 📊 Docker Management Commands
 
 ```bash
 # View logs
 docker-compose logs -f reacharr-agent
 
-# Update the agent
-docker-compose pull
-docker-compose up -d
+# Update to latest version
+docker-compose pull && docker-compose up -d
 
-# Stop the agent
+# Restart services
+docker-compose restart
+
+# Stop everything
 docker-compose down
 
-# Reset configuration
-docker-compose down
-docker volume rm reacharr-agent_data
-docker-compose up -d
+# Complete reset (removes all data)
+docker-compose down -v
+rm -rf ./data
 
-# Debug mode
-echo "LOG_LEVEL=debug" >> .env
-docker-compose up -d
+# Debug mode (check individual service logs)
+docker-compose logs -f reacharr-config-ui
 ```
+
+### 🐛 Troubleshooting
+
+**Agent won't start?**
+```bash
+docker-compose logs reacharr-agent
+```
+
+**Can't access Radarr/Sonarr?**
+- ✅ Check if they're running: `curl http://localhost:7878` 
+- ✅ Try `host.docker.internal` instead of `localhost`
+- ✅ Verify API keys in their web interfaces
+
+**Configuration UI not loading?**
+```bash
+docker-compose logs reacharr-config-ui
+```
+
+### 📁 Data Storage
+
+All configuration is stored in `./data/`:
+- `./data/agent-config.json` - Your configuration
+- `./data/agent.log` - Application logs
 
 ## 🐧 Installation Method 2: Native Linux/macOS
 
