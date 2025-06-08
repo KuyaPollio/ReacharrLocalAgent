@@ -35,7 +35,7 @@ Docker is the easiest way to run the Reacharr Local Agent. **No environment vari
 
 1. **Download the ready-to-run Docker setup:**
    ```bash
-   curl -L https://github.com/ReacharrPascal/ReacharrLocalAgent/releases/latest/download/docker-compose.yml -o docker-compose.yml
+   curl -L https://github.com/KuyaPollio/ReacharrLocalAgent/releases/latest/download/docker-compose.yml -o docker-compose.yml
    ```
 
 2. **Start the agent:**
@@ -60,7 +60,7 @@ version: '3.8'
 services:
   # Reacharr Local Agent Backend
   reacharr-agent:
-    image: ghcr.io/reacharrpascal/reacharr-localagent:latest
+    image: ghcr.io/KuyaPollio/reacharr-localagent:latest
     container_name: reacharr-agent
     volumes:
       - ./data:/app/data
@@ -79,7 +79,7 @@ services:
 
   # Configuration Web UI
   reacharr-config-ui:
-    image: ghcr.io/reacharrpascal/reacharr-configui:latest
+    image: ghcr.io/KuyaPollio/reacharr-configui:latest
     container_name: reacharr-config-ui
     environment:
       - REACT_APP_AGENT_API_URL=http://localhost:3000
