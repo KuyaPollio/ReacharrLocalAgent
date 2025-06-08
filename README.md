@@ -119,28 +119,6 @@ volumes:
 - **Radarr URL**: `http://192.168.1.100:7878` (use actual IP)
 - **Sonarr URL**: `http://192.168.1.100:8989`
 
-### 📊 Docker Management Commands
-
-```bash
-# View logs
-docker-compose logs -f reacharr-agent
-
-# Update to latest version
-docker-compose pull && docker-compose up -d
-
-# Restart services
-docker-compose restart
-
-# Stop everything
-docker-compose down
-
-# Complete reset (removes all data)
-docker-compose down -v
-rm -rf ./data
-
-# Debug mode (check individual service logs)
-docker-compose logs -f reacharr-config-ui
-```
 
 ### 🐛 Troubleshooting
 
