@@ -1,0 +1,7 @@
+{
+  "agentId": "test_agent_123",
+  "radarrUrl": "http://10.0.0.59:7878",
+  "radarrApiKey": "96b2678427484a2f9101d50db9cd69bc",
+  "sonarrUrl": "http://10.0.0.59:8989",
+  "sonarrApiKey": "fbfd4bd2461e49398792df771e25f5cf"
+}

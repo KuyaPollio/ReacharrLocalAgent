@@ -1,43 +1,50 @@
 version: '3.8'
 
 services:
-  # Reacharr Local Agent Backend
-  reacharr-agent:
-    image: ghcr.io/kuyapollio/reacharr-localagent:latest
-    container_name: reacharr-agent
+  # Local Agent Backend Service
+  agent:
+    image: ghcr.io/kuyapollio/reacharr-local-agent:latest
+    container_name: reacharr-local-agent
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - CONFIG_PATH=/app/data/agent-config.json
+      - LOG_LEVEL=info
+      - CORS_ORIGIN=http://localhost:3001
+      # Remote MQTT Configuration (will be provided via config)
+      - REMOTE_SERVER_URL=https://reacharr.com
+      - MQTT_BROKER_URL=mqtts://reacharr.com:8883
+      - MQTT_PASSWORD=reacharr_agent_password
+      # Force MQTTS connection (override remote server response)
+      - FORCE_MQTTS=true
     volumes:
       - ./data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    user: "1001:1001"
     ports:
       - "3000:3000"
     networks:
-      - reacharr-network
+      - agent-network
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "node", "-e", "const http = require('http'); http.get('http://localhost:3000/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
 
   # Configuration Web UI
-  reacharr-config-ui:
-    image: ghcr.io/kuyapollio/reacharr-configui:latest
+  config-ui:
+    image: ghcr.io/kuyapollio/reacharr-config-ui:latest
     container_name: reacharr-config-ui
     environment:
       - REACT_APP_AGENT_API_URL=http://localhost:3000
+      - BACKEND_URL=http://agent:3000
     ports:
       - "3001:3000"
     networks:
-      - reacharr-network
+      - agent-network
     restart: unless-stopped
     depends_on:
-      reacharr-agent:
-        condition: service_healthy
+      - agent
 
 networks:
-  reacharr-network:
+  agent-network:
     driver: bridge
 
 volumes:
-  reacharr_data:
+  agent_data: 

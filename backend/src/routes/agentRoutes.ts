@@ -463,9 +463,9 @@ async function getMQTTCredentials(agentId: string, firebaseToken?: string) {
       console.warn('No Firebase token provided, using fallback MQTT credentials');
       // Fallback to old method for development
       return {
-        username: `agent_${agentId}`,
+        username: process.env.MQTT_USERNAME || 'reacharr_agent',
         password: process.env.MQTT_PASSWORD || 'reacharr_agent_password',
-        brokerUrl: process.env.MQTT_BROKER_URL || 'mqtt://reacharr.com:1883'
+        brokerUrl: process.env.MQTT_BROKER_URL || 'mqtts://reacharr.com:8883'
       };
     }
 
@@ -493,10 +493,20 @@ async function getMQTTCredentials(agentId: string, firebaseToken?: string) {
     
     if (result && typeof result === 'object' && 'success' in result && result.success && 'credentials' in result && result.credentials) {
       console.log(`✅ Successfully obtained MQTT credentials for agent ${agentId}`);
+      
+      // Override brokerUrl with environment variable if available (for production agents)
+      const brokerUrl = process.env.MQTT_BROKER_URL || (result.credentials as any).brokerUrl;
+      console.log(`🔗 Using broker URL: ${brokerUrl}`);
+      
+      // Force static credentials if environment variables are set (for production agents)
+      const username = process.env.MQTT_USERNAME || (result.credentials as any).username;
+      const password = process.env.MQTT_PASSWORD || (result.credentials as any).password;
+      console.log(`🔑 Using username: ${username}`);
+      
       return {
-        username: (result.credentials as any).username,
-        password: (result.credentials as any).password,
-        brokerUrl: (result.credentials as any).brokerUrl
+        username: username,
+        password: password,
+        brokerUrl: brokerUrl
       };
     } else {
       throw new Error('Invalid response format from remote server');
@@ -508,9 +518,9 @@ async function getMQTTCredentials(agentId: string, firebaseToken?: string) {
     // Return fallback credentials for development
     console.warn('Using fallback MQTT credentials');
     return {
-      username: `agent_${agentId}`,
+      username: process.env.MQTT_USERNAME || 'reacharr_agent',
       password: process.env.MQTT_PASSWORD || 'reacharr_agent_password',
-      brokerUrl: process.env.MQTT_BROKER_URL || 'mqtt://reacharr.com:1883'
+      brokerUrl: process.env.MQTT_BROKER_URL || 'mqtts://reacharr.com:8883'
     };
   }
 }

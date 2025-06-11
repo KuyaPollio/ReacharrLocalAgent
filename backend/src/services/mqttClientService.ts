@@ -112,14 +112,60 @@ class LocalAgentMQTTService extends EventEmitter {
     }
 
     try {
-      this.client = mqtt.connect(this.credentials.brokerUrl, {
+      // Determine if this is a secure connection
+      const isSecure = this.credentials.brokerUrl.startsWith('mqtts://');
+      
+      const connectionOptions: any = {
         username: this.credentials.username,
         password: this.credentials.password,
         clientId: `reacharr-agent-${this.config.agentId}-${Date.now()}`,
         clean: true,
         reconnectPeriod: 30000,
         connectTimeout: 30000,
-      });
+      };
+
+      // Add SSL/TLS options for secure connections
+      if (isSecure) {
+        connectionOptions.protocol = 'mqtts';
+        connectionOptions.port = 8883;
+        
+        // Use embedded CA certificate for validation
+        try {
+          const fs = require('fs');
+          const path = require('path');
+          const caCertPath = path.join(__dirname, '../../certs/ca.crt');
+          
+          if (fs.existsSync(caCertPath)) {
+            const caCert = fs.readFileSync(caCertPath);
+            connectionOptions.ca = [caCert];
+            connectionOptions.rejectUnauthorized = true;
+            console.log('🔒 Agent using secure MQTTS connection with embedded CA certificate');
+          } else {
+            // Fallback to environment variable control if certificate not found
+            const rejectUnauthorized = process.env.NODE_TLS_REJECT_UNAUTHORIZED !== '0';
+            connectionOptions.rejectUnauthorized = rejectUnauthorized;
+            
+            if (rejectUnauthorized) {
+              console.log('🔒 Agent using secure MQTTS connection with system CA validation');
+            } else {
+              console.log('🔒 Agent using secure MQTTS connection (certificate validation disabled)');
+            }
+          }
+        } catch (error) {
+          console.warn('⚠️ Failed to load embedded CA certificate, falling back to system CAs:', error instanceof Error ? error.message : error);
+          // Fallback to system certificate validation
+          const rejectUnauthorized = process.env.NODE_TLS_REJECT_UNAUTHORIZED !== '0';
+          connectionOptions.rejectUnauthorized = rejectUnauthorized;
+        }
+        
+        // Additional SSL options for better compatibility
+        connectionOptions.secureProtocol = 'TLSv1_2_method';
+        
+      } else {
+        console.log('📡 Agent using plain MQTT connection');
+      }
+
+      this.client = mqtt.connect(this.credentials.brokerUrl, connectionOptions);
 
       this.setupEventHandlers();
       await this.waitForConnection();
@@ -150,6 +196,24 @@ class LocalAgentMQTTService extends EventEmitter {
 
     this.client.on('error', (error) => {
       console.error('❌ MQTT error:', error);
+      
+      // Provide more specific error messages for common issues
+      const errorMessage = (error instanceof Error ? error.message : String(error)) || 'Unknown error';
+      
+      if (errorMessage.includes('CERT_HAS_EXPIRED')) {
+        console.error('🔒 SSL certificate has expired on the MQTT server');
+      } else if (errorMessage.includes('UNABLE_TO_VERIFY_LEAF_SIGNATURE')) {
+        console.error('🔒 SSL certificate verification failed. Set NODE_TLS_REJECT_UNAUTHORIZED=0 to bypass (not recommended for production)');
+      } else if (errorMessage.includes('ECONNREFUSED')) {
+        console.error('🌐 Connection refused. Check if MQTT broker is running and accessible');
+      } else if (errorMessage.includes('ENOTFOUND')) {
+        console.error('🌐 Host not found. Check your MQTT_BROKER_URL setting');
+      } else if (errorMessage.includes('ETIMEDOUT')) {
+        console.error('⏰ Connection timeout. Check network connectivity and firewall settings');
+      } else if (errorMessage.includes('Authentication failed')) {
+        console.error('🔑 MQTT authentication failed. Check username and password');
+      }
+      
       this.emit('error', error);
     });
 

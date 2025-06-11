@@ -194,10 +194,19 @@ const Configuration: React.FC = () => {
         body: JSON.stringify(config)
       });
 
-      if (response.ok) {
-        setSuccess('Configuration saved successfully! Agent is now starting...');
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        // Show success message based on MQTT status
+        if (result.mqtt?.status === 'connected') {
+          setSuccess('Configuration saved successfully! Agent is connected to remote server.');
+        } else if (result.mqtt?.status === 'failed') {
+          setSuccess('Configuration saved successfully! Agent is running locally (remote features unavailable).');
+        } else {
+          setSuccess('Configuration saved successfully! Agent is now starting...');
+        }
       } else {
-        throw new Error('Failed to save configuration');
+        throw new Error(result.message || 'Failed to save configuration');
       }
     } catch (error) {
       setError('Failed to save configuration. Please try again.');

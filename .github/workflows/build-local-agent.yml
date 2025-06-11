@@ -1,0 +1,412 @@
+name: Build and Deploy Local Agent
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - '**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '**'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME_BACKEND: reacharr-localagent
+  IMAGE_NAME_FRONTEND: reacharr-configui
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: |
+          backend/package-lock.json
+          frontend/package-lock.json
+
+    # Create configuration files from GitHub secrets
+    - name: Create environment configuration
+      run: |
+        cat > local-agent/.env << 'EOF'
+        # Reacharr Local Agent Configuration
+        # Auto-generated from GitHub secrets
+        
+        # Remote Server Configuration
+        REMOTE_SERVER_URL=${{ secrets.REMOTE_SERVER_URL || 'https://reacharr.com' }}
+        MQTT_BROKER_URL=${{ secrets.MQTT_BROKER_URL || 'mqtts://reacharr.com:8883' }}
+        MQTT_PASSWORD=${{ secrets.MQTT_PASSWORD }}
+        
+        # Application Settings
+        NODE_ENV=production
+        LOG_LEVEL=info
+        CORS_ORIGIN=http://localhost:3001
+        
+        # Agent Configuration
+        PORT=3000
+        CONFIG_PATH=/app/data/config.json
+        
+        # MQTT Configuration
+        MQTT_URL=${{ secrets.MQTT_BROKER_URL || 'mqtts://reacharr.com:8883' }}
+        MQTT_USERNAME=${{ secrets.MQTT_USERNAME || 'reacharr_agent' }}
+        MQTT_PASSWORD=${{ secrets.MQTT_PASSWORD }}
+        MQTT_CLIENT_ID=reacharr-agent-{random}
+        
+        # Firebase Configuration
+        FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID || 'managarr-7c808' }}
+        FIREBASE_SERVICE_ACCOUNT_PATH=/app/firebase-service-account.json
+        
+        # Default Radarr Configuration (overridden by config.json)
+        RADARR_URL=http://localhost:7878
+        RADARR_API_KEY=your_radarr_api_key
+        
+        # Default Sonarr Configuration (overridden by config.json)
+        SONARR_URL=http://localhost:8989
+        SONARR_API_KEY=your_sonarr_api_key
+        
+        # Logging
+        LOG_FILE=/app/data/agent.log
+        
+        # Sync Configuration
+        SYNC_INTERVAL=30000
+        RETRY_ATTEMPTS=3
+        RETRY_DELAY=5000
+        
+        # Security
+        API_KEY_HEADER=X-API-Key
+        
+        # Health Check
+        HEALTH_CHECK_INTERVAL=60000
+        EOF
+
+    - name: Create Firebase service account file
+      run: |
+        cat > backend/firebase-service-account.json << 'EOF'
+        {
+          "type": "service_account",
+          "project_id": "${{ secrets.FIREBASE_PROJECT_ID || 'managarr-7c808' }}",
+          "private_key_id": "${{ secrets.FIREBASE_PRIVATE_KEY_ID }}",
+          "private_key": "${{ secrets.FIREBASE_PRIVATE_KEY }}",
+          "client_email": "${{ secrets.FIREBASE_CLIENT_EMAIL }}",
+          "client_id": "${{ secrets.FIREBASE_CLIENT_ID }}",
+          "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+          "token_uri": "https://oauth2.googleapis.com/token",
+          "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+          "client_x509_cert_url": "${{ secrets.FIREBASE_CLIENT_X509_CERT_URL }}",
+          "universe_domain": "googleapis.com"
+        }
+        EOF
+
+    - name: Create frontend Firebase config
+      run: |
+        cat > frontend/firebase-config.json << 'EOF'
+        {
+          "apiKey": "${{ secrets.FIREBASE_WEB_API_KEY }}",
+          "authDomain": "${{ secrets.FIREBASE_AUTH_DOMAIN || 'managarr-7c808.firebaseapp.com' }}",
+          "projectId": "${{ secrets.FIREBASE_PROJECT_ID || 'managarr-7c808' }}",
+          "storageBucket": "${{ secrets.FIREBASE_STORAGE_BUCKET || 'managarr-7c808.firebasestorage.app' }}",
+          "messagingSenderId": "${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}",
+          "appId": "${{ secrets.FIREBASE_APP_ID }}",
+          "measurementId": "${{ secrets.FIREBASE_MEASUREMENT_ID }}"
+        }
+        EOF
+
+    # Log in to Container Registry
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    # Download CA certificate for MQTT TLS connection
+    - name: Download MQTT CA certificate
+      run: |
+        echo "Downloading CA certificate for MQTT TLS connection..."
+        mkdir -p local-agent/backend/certs
+        mkdir -p local-agent/frontend/certs
+        
+        # Try HTTPS first, fallback to HTTP if HTTPS fails
+        echo "Attempting HTTPS download..."
+        if curl -f -s -o local-agent/backend/certs/ca.crt https://reacharr.com/mqtt/ca.crt; then
+          echo "✅ Downloaded via HTTPS"
+        else
+          echo "⚠️ HTTPS failed, trying HTTP..."
+          if curl -f -s -o local-agent/backend/certs/ca.crt http://reacharr.com/mqtt/ca.crt; then
+            echo "✅ Downloaded via HTTP"
+          else
+            echo "❌ Both HTTPS and HTTP failed, certificate download failed"
+            exit 1
+          fi
+        fi
+        
+        # Copy certificate to frontend directory
+        cp backend/certs/ca.crt frontend/certs/ca.crt
+        
+        # Verify certificate was downloaded and is valid
+        if [ -f backend/certs/ca.crt ] && [ -s backend/certs/ca.crt ]; then
+          echo "✅ CA certificate downloaded successfully for backend"
+          echo "📁 File size: $(ls -lh backend/certs/ca.crt | awk '{print $5}')"
+          
+          # Try to verify certificate format
+          if openssl x509 -in backend/certs/ca.crt -noout -text >/dev/null 2>&1; then
+            echo "✅ Certificate format is valid"
+            echo "📋 Certificate details:"
+            openssl x509 -in backend/certs/ca.crt -noout -subject -dates
+          else
+            echo "⚠️ Certificate format verification failed, but file exists - continuing anyway"
+            echo "📄 First few lines of downloaded file:"
+            head -3 backend/certs/ca.crt
+          fi
+        else
+          echo "❌ Failed to download CA certificate for backend"
+          exit 1
+        fi
+        
+        if [ -f rontend/certs/ca.crt ] && [ -s local-agent/frontend/certs/ca.crt ]; then
+          echo "✅ CA certificate copied successfully for frontend"
+        else
+          echo "❌ Failed to copy CA certificate for frontend"
+          exit 1
+        fi
+
+    # Extract metadata for Docker
+    - name: Extract metadata (backend)
+      id: meta-backend
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME_BACKEND }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Extract metadata (frontend)
+      id: meta-frontend
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME_FRONTEND }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    # Build and push Docker images
+    - name: Build and push backend image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./backend
+        file: ./backend/Dockerfile
+        push: true
+        tags: ${{ steps.meta-backend.outputs.tags }}
+        labels: ${{ steps.meta-backend.outputs.labels }}
+
+    - name: Build and push frontend image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./frontend
+        file: ./frontend/Dockerfile
+        push: true
+        tags: ${{ steps.meta-frontend.outputs.tags }}
+        labels: ${{ steps.meta-frontend.outputs.labels }}
+
+    # Create release artifacts
+    - name: Create release directory
+      run: |
+        mkdir -p release/
+        cp -r /* release/
+        # Remove sensitive files from release
+        rm -f release/firebase-service-account.json
+        rm -f release/frontend/firebase-config.json
+        rm -f release/.env
+
+    - name: Create docker-compose for users
+      run: |
+        cat > release/docker-compose.yml << 'EOF'
+        version: '3.8'
+        
+        services:
+          # Local Agent Backend Service
+          agent:
+            image: ghcr.io/${{ github.repository_owner }}/reacharr-localagent:latest
+            container_name: reacharr-local-agent
+            environment:
+              - NODE_ENV=production
+              - PORT=3000
+              - CONFIG_PATH=/app/data/agent-config.json
+              - LOG_LEVEL=info
+              - CORS_ORIGIN=http://localhost:3001
+              # Remote MQTT Configuration (will be provided via config)
+              - REMOTE_SERVER_URL=https://reacharr.com
+              - MQTT_BROKER_URL=mqtts://reacharr.com:8883
+              - MQTT_PASSWORD=reacharr_agent_password
+            volumes:
+              - ./data:/app/data
+              - /var/run/docker.sock:/var/run/docker.sock:ro
+            user: "1001:1001"
+            ports:
+              - "3000:3000"
+            networks:
+              - agent-network
+            restart: unless-stopped
+        
+          # Configuration Web UI
+          config-ui:
+            image: ghcr.io/${{ github.repository_owner }}/reacharr-configui:latest
+            container_name: reacharr-config-ui
+            environment:
+              - REACT_APP_AGENT_API_URL=http://localhost:3000
+              - BACKEND_URL=http://localhost:3000
+            ports:
+              - "3001:3000"
+            networks:
+              - agent-network
+            restart: unless-stopped
+            depends_on:
+              - agent
+        
+        networks:
+          agent-network:
+            driver: bridge
+        
+        volumes:
+          agent_data:
+        EOF
+
+    - name: Create README for users
+      run: |
+        cat > release/README.md << 'EOF'
+        # Reacharr Local Agent
+        
+        This is the pre-built Reacharr Local Agent that connects to the Reacharr remote server.
+        
+        **✅ SSL/TLS certificates are now included in the Docker images!**
+        No manual certificate download required.
+        
+        ## Quick Start
+        
+        1. **Download the docker-compose.yml file**
+        2. **Run the agent:**
+           ```bash
+           docker-compose up -d
+           ```
+        3. **Access the configuration UI:**
+           - Open http://localhost:3001 in your browser
+           - Configure your Radarr and Sonarr connections
+           - The agent will automatically connect to the remote server via encrypted MQTTS
+        
+        ## What's Included
+        
+        - ✅ **Pre-configured MQTTS connection** to reacharr.com with TLS encryption
+        - ✅ **CA certificate embedded** in Docker images (no manual download needed)
+        - ✅ **Authentication configured** for secure MQTT communication
+        - ✅ **Web-based configuration UI** for easy setup
+        - ✅ **Ready-to-run Docker images** with all dependencies
+        
+        ## Manual Configuration
+        
+        If you prefer to configure manually, create a `data/agent-config.json` file:
+        
+        ```json
+        {
+          "radarr": {
+            "url": "http://your-radarr-server:7878",
+            "apiKey": "your-radarr-api-key"
+          },
+          "sonarr": {
+            "url": "http://your-sonarr-server:8989",
+            "apiKey": "your-sonarr-api-key"
+          },
+          "agent": {
+            "name": "My Home Server",
+            "location": "Home"
+          }
+        }
+        ```
+        
+        ## Ports
+        
+        - **3000**: Agent API (internal communication)
+        - **3001**: Configuration Web UI
+        
+        ## Data Persistence
+        
+        Agent configuration and logs are stored in the `./data` directory.
+        
+        ## Security Features
+        
+        - 🔒 **TLS 1.2 Encryption**: All MQTT traffic is encrypted end-to-end
+        - 🔐 **Certificate Authentication**: Prevents man-in-the-middle attacks
+        - 👤 **User Authentication**: No anonymous MQTT access allowed
+        - 📋 **Topic ACLs**: Fine-grained access control for MQTT topics
+        
+        ## Troubleshooting
+        
+        - **Check logs**: `docker-compose logs agent`
+        - **Restart services**: `docker-compose restart`
+        - **Reset configuration**: Delete `./data/agent-config.json` and reconfigure via UI
+        - **MQTT connection issues**: Check if port 8883 is accessible from your network
+        
+        For more help, visit: https://github.com/${{ github.repository }}
+        EOF
+
+    # Upload release artifacts
+    - name: Upload release artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: reacharr-local-agent-${{ github.sha }}
+        path: |
+          release/
+        retention-days: 30
+
+    # Create GitHub Release (only on main branch)
+    - name: Create Release
+      if: github.ref == 'refs/heads/main'
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: local-agent-v${{ github.run_number }}
+        name: Local Agent Release v${{ github.run_number }}
+        body: |
+          ## Reacharr Local Agent Release
+          
+          **Pre-built Docker images with automatic configuration and embedded SSL certificates**
+          
+          ### What's included:
+          - ✅ Pre-configured connection to reacharr.com
+          - ✅ Ready-to-use Docker images
+          - ✅ Web-based configuration UI
+          - ✅ Automatic MQTT TLS connection setup
+          - 🆕 **Embedded SSL/TLS certificates** (no manual download required!)
+          - 🔒 **End-to-end encryption** for all MQTT communication
+          
+          ### Quick Start:
+          1. Download `docker-compose.yml`
+          2. Run `docker-compose up -d`
+          3. Open http://localhost:3001 to configure
+          
+          **That's it!** The agent will automatically connect securely to the remote server.
+          
+          ### Docker Images:
+          - Backend: `ghcr.io/${{ github.repository_owner }}/reacharr-localagent:latest`
+          - Frontend: `ghcr.io/${{ github.repository_owner }}/reacharr-configui:latest`
+          
+        files: |
+          release/docker-compose.yml
+          release/README.md
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 

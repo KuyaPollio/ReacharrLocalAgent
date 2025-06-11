@@ -155,11 +155,22 @@ const AgentSetup: React.FC = () => {
         body: JSON.stringify(config)
       });
 
-      if (response.ok) {
-        alert('Agent configured successfully! The agent will now start collecting data.');
-        setMqttStatus('connecting');
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        // Show success message based on MQTT status
+        if (result.mqtt?.status === 'connected') {
+          alert('Agent configured successfully! Connected to remote server.');
+          setMqttStatus('connected');
+        } else if (result.mqtt?.status === 'failed') {
+          alert('Agent configured successfully! Running locally (remote features unavailable).');
+          setMqttStatus('disconnected');
+        } else {
+          alert('Agent configured successfully! The agent will now start collecting data.');
+          setMqttStatus('connecting');
+        }
       } else {
-        throw new Error('Failed to save configuration');
+        throw new Error(result.message || 'Failed to save configuration');
       }
     } catch (error) {
       console.error('Failed to save configuration:', error);
