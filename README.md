@@ -62,8 +62,19 @@ version: '3.8'
 services:
   # Reacharr Local Agent Backend
   reacharr-agent:
-    image: ghcr.io/KuyaPollio/reacharr-localagent:latest
+    image: ghcr.io/kuyapollio/reacharr-localagent:latest
     container_name: reacharr-agent
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - CONFIG_PATH=/app/data/agent-config.json
+      - LOG_LEVEL=info
+      - CORS_ORIGIN=http://localhost:3001
+      # Remote MQTT Configuration (will be provided via config)
+      - REMOTE_SERVER_URL=https://reacharr.com
+      - MQTT_BROKER_URL=mqtts://reacharr.com:8883
+      - MQTT_PASSWORD=reacharr_agent_password
+      - MQTT_USERNAME=reacharr_agent
     volumes:
       - ./data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -81,10 +92,11 @@ services:
 
   # Configuration Web UI
   reacharr-config-ui:
-    image: ghcr.io/KuyaPollio/reacharr-configui:latest
+    image: ghcr.io/kuyapollio/reacharr-configui:latest
     container_name: reacharr-config-ui
     environment:
       - REACT_APP_AGENT_API_URL=http://localhost:3000
+      - BACKEND_URL=http://reacharr-agent:3000
     ports:
       - "3001:3000"
     networks:
